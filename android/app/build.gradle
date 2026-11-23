@@ -1,0 +1,50 @@
+plugins {
+    id 'com.android.application'
+}
+
+def runNo = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+def repo = System.getenv('GITHUB_REPOSITORY') ?: 'owner/family-logistika'
+
+android {
+    namespace 'uz.family.logistika'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'uz.family.logistika'
+        minSdk 24
+        targetSdk 34
+        versionCode runNo
+        versionName "1.${runNo}"
+        buildConfigField 'String', 'REPO', "\"${repo}\""
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('logistika.jks')
+            storePassword 'familylogistika'
+            keyAlias 'logistika'
+            keyPassword 'familylogistika'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
