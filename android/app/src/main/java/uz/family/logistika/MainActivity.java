@@ -57,6 +57,7 @@ public class MainActivity extends Activity {
         } else {
             openApp();
         }
+        Updater.check(this, false);
     }
 
     // ------------------------------------------------------------------ кириш экрани
@@ -122,6 +123,15 @@ public class MainActivity extends Activity {
             msg.setText(err);
         }
         box.addView(msg);
+
+        TextView upd = new TextView(this);
+        upd.setText("🔄 Янги версияни текшириш  ·  v" + BuildConfig.VERSION_NAME);
+        upd.setTextColor(BLUE);
+        upd.setGravity(Gravity.CENTER);
+        upd.setTextSize(14);
+        upd.setPadding(0, dp(28), 0, dp(8));
+        upd.setOnClickListener(v -> Updater.check(this, true));
+        box.addView(upd);
 
         go.setOnClickListener(v -> {
             String c = code.getText().toString().trim();
@@ -244,6 +254,18 @@ public class MainActivity extends Activity {
                 return true;
             }
         });
+
+        web.addJavascriptInterface(new Object() {
+            @android.webkit.JavascriptInterface
+            public void update() {
+                runOnUiThread(() -> Updater.check(MainActivity.this, true));
+            }
+
+            @android.webkit.JavascriptInterface
+            public String version() {
+                return BuildConfig.VERSION_NAME;
+            }
+        }, "FLApp");
 
         load();
         watch.postDelayed(checker, 40_000);
@@ -394,6 +416,7 @@ public class MainActivity extends Activity {
         if (web != null) {
             watch.post(checker);
         }
+        Updater.check(this, false);
         if (web != null && "driver".equals(Net.prefs(this).getString("role", ""))
                 && (Build.VERSION.SDK_INT < 23 || checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED)) {
             GpsService.start(this);
