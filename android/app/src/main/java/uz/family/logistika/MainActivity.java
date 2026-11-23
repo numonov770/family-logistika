@@ -204,6 +204,15 @@ public class MainActivity extends Activity {
             }
 
             @Override
+            public void onReceivedHttpError(WebView v, WebResourceRequest req, android.webkit.WebResourceResponse r) {
+                if (req.isForMainFrame() && r.getStatusCode() >= 400 && !failed) {
+                    failed = true;
+                    shown = "";
+                    retry();
+                }
+            }
+
+            @Override
             public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError e) {
                 if (req.isForMainFrame() && !failed) {
                     failed = true;
@@ -237,27 +246,69 @@ public class MainActivity extends Activity {
         });
 
         load();
+        watch.postDelayed(checker, 40_000);
         if ("driver".equals(Net.prefs(this).getString("role", ""))) {
             askLocation();
         }
     }
 
+    private String shown = "";
+    private boolean loading;
+    private final android.os.Handler watch = new android.os.Handler(android.os.Looper.getMainLooper());
+
     private void load() {
+        if (loading) {
+            return;
+        }
+        loading = true;
         failed = false;
         new Thread(() -> {
-            String base = errors == 0 && !Net.base(this).isEmpty() ? Net.base(this) : Net.resolveBase(this);
-            String url = base + "/mob/open?t=" + Uri.encode(Net.token(this));
+            int[] st = {-1};
+            String base = Net.goodBase(this, st);
             runOnUiThread(() -> {
+                loading = false;
+                if (st[0] == 0) {           // код эскирган → қайта кириш
+                    Net.prefs(this).edit().remove("token").apply();
+                    web = null;
+                    showLogin("Кириш муддати тугади. Ботдан янги код олинг.");
+                    return;
+                }
                 if (base.isEmpty()) {
                     retry();
                 } else {
-                    web.loadUrl(url);
+                    shown = base;
+                    web.loadUrl(base + "/mob/open?t=" + Uri.encode(Net.token(this)));
                 }
             });
         }).start();
     }
 
+    /** Ҳар 40 сонияда сервер тирикми — текширади; манзил ўзгарган бўлса ўзи янгисига ўтади. */
+    private final Runnable checker = new Runnable() {
+        @Override
+        public void run() {
+            watch.removeCallbacks(this);
+            if (web != null && !loading && !shown.isEmpty()) {
+                String cur = shown;
+                new Thread(() -> {
+                    if (Net.ping(cur, Net.token(MainActivity.this)) < 0) {
+                        runOnUiThread(() -> {
+                            if (web != null && cur.equals(shown)) {
+                                shown = "";
+                                load();
+                            }
+                        });
+                    }
+                }).start();
+            }
+            watch.postDelayed(this, 40_000);
+        }
+    };
+
     private void retry() {
+        if (web == null) {
+            return;
+        }
         errors++;
         if (errors > 6) {
             web.loadData("<html><body style='font-family:sans-serif;text-align:center;padding:40px'>"
@@ -265,17 +316,24 @@ public class MainActivity extends Activity {
                     + "<p>Илова 30 сониядан кейин ўзи қайта уринади.</p></body></html>", "text/html; charset=utf-8", "utf-8");
             web.postDelayed(() -> {
                 errors = 1;
-                load();
+                if (web != null) {
+                    load();
+                }
             }, 30_000);
             return;
         }
-        web.postDelayed(this::load, 3_000L * errors);
+        web.postDelayed(() -> {
+            if (web != null) {
+                load();
+            }
+        }, 3_000L * errors);
     }
 
     private boolean external(Uri u) {
         String host = u.getHost() == null ? "" : u.getHost();
         String base = Net.base(this);
-        if (host.endsWith("trycloudflare.com") || (!base.isEmpty() && base.contains(host))) {
+        if (host.endsWith("trycloudflare.com") || host.endsWith("lhr.life") || host.endsWith("localhost.run")
+                || (!base.isEmpty() && !host.isEmpty() && base.contains(host))) {
             return false;
         }
         openOutside(u);
@@ -333,10 +391,19 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (web != null) {
+            watch.post(checker);
+        }
         if (web != null && "driver".equals(Net.prefs(this).getString("role", ""))
                 && (Build.VERSION.SDK_INT < 23 || checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED)) {
             GpsService.start(this);
         }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        watch.removeCallbacks(checker);
     }
 
     @Override

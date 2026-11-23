@@ -165,9 +165,12 @@ public class GpsService extends Service implements LocationListener {
                 pts.put(a);
             }
             String base = Net.base(this);
-            if (base.isEmpty() || fails >= 3) {
-                base = Net.resolveBase(this);
+            if (base.isEmpty() || fails >= 2) {
+                base = Net.goodBase(this, null);
                 fails = 0;
+                if (base.isEmpty()) {
+                    return;             // нуқталар навбатда сақланади, кейин юборилади
+                }
             }
             Object[] r = Net.post(base + "/mob/gps", "{\"pts\":" + pts + "}", tok);
             int code = (Integer) r[0];
@@ -176,7 +179,8 @@ public class GpsService extends Service implements LocationListener {
                     queue.subList(0, Math.min(batch.size(), queue.size())).clear();
                 }
                 fails = 0;
-            } else if (code == 401) {
+            } else if (code == 401 && String.valueOf(r[1]).contains("token")
+                    && Net.ping(base, tok) == 0) {
                 Net.prefs(this).edit().remove("token").apply();
                 stopSelf();
             } else {
